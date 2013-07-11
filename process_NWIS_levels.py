@@ -126,7 +126,10 @@ for well in wells:
     # before sorting, identify wells with more than one measurement
     # extract single value from list for wells with one measurement
     # for artesian wells, set GW elevation to wellhead elevation if no value
-    if len(levels[well])>1:
+    if levels[well][0]==None:
+        if 'F' or 'E' in codes[well]:
+            levels[well]=elevation
+    elif len(levels[well])>1:
         wells2plot.append(well)
         maxmin=np.max(levels[well])-np.min(levels[well])
     elif len(levels[well])==1:
@@ -135,8 +138,7 @@ for well in wells:
         except TypeError: # if no level, value obtained from file might be ''
             if 'F' or 'E' in codes[well]:
                 artesian=True
-                levels[well]=elevation            
-            
+                levels[well]=elevation                     
     # sort wells based on QC criteria
     if Drely=='C':
         
@@ -253,7 +255,6 @@ for well in wells2plot:
     if len(post1970)>0:
         #ax1.axhline(y=avg_post1970, xmin=start, color='r',label='post-1970 avg')
         p2=ax1.plot_date(post1970,avg_post1970,'r',label='post-1970 avg')
-        levels[well]=np.mean(post1970WLs)
             
     if len(pre1970)>0:
         #ax1.axhline(y=avg_pre1970, xmax=end, color='g',label='pre-1970 avg')
