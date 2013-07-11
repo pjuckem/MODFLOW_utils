@@ -22,10 +22,10 @@ spacing=76.2 # same units as origin
 # Input files
 botsfile='BR_L1L5bot.DAT' # GWV mat with bottom elevations for all layers
 l1topfile='L1top.DAT' # GWV mat with top elevations for layer 1
-headsxls='HeadTargets.xlsx' # Head Targets spreadsheet
+headsxls='Head_targets.xlsx' # Head Targets spreadsheet
 
 # Settings
-IUHOBSV=47 # file unit for saving head observations
+IUHOBSV=500 # file unit for saving head observations
 HOBDRY='NaN' # specifies what is written in hob file for dry cells
 TOMULTH=0 # time-offset multiplier
 IREFSP=1 # stress period to which the observation time is referenced.
@@ -33,6 +33,7 @@ TOFFSET=1 # time from the beginning of stress period IREFSP to the time of the o
 
 # Outputfiles
 HOBfile='BadRiver.hob'
+culled_headtargets='Head_targets.csv' # list of culled targets for re-import into Excel (and subsequent construction of PEST input files)
 
 # set limits
 xlim=originX+columns*spacing
@@ -62,9 +63,11 @@ obslines=[]
 NH=0
 MOBS=0
 MAXM=2
+ctargets=[]
 for i in range(len(obsname))[1:]:
     
     if originX<x[i]<xlim and originY<y[i]<ylim:
+        ctargets.append(','.join(map(str,[obsname[i],WL[i]])))
         NH+=1
         print '%s %s' %(obsname[i],NH) 
         # Determine horizontal offset coefficents for obs process
@@ -125,7 +128,7 @@ for i in range(len(obsname))[1:]:
             for key in PR.iterkeys():
                 layer=key
             
-        # add entry to output file
+        # add entry to hob output file
         obslines.append('%s %s %s %s %s %s %s %s %s\n' %(obsname[i],layer,int(row),int(column),IREFSP,TOFFSET,ROFF,COFF,WL[i]))
         if layer<0:
             for l in PR.iterkeys():
@@ -143,41 +146,9 @@ ofp.write('%s\n' %(TOMULTH))
 for line in obslines:
     ofp.write(line)
 ofp.close()
-                    
-                
-            
-            
 
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-            
-'''
-for b in range(len(bots)):
-    if sctop[i]>bots[b]:
-        if scbot[i]<bots[b-1]:
-            layer_inds.append(b)
-    else:
-        continue
-
-
-PR=dict()
-for l in layer_inds:
-    if len(layer_inds)==1:
-        PR[l]=1
-    elif sctop[i]>bots[l]>scbot[i]:
-        layerthick=sctop[i]-bots[l]
-        PR[l]=layerthick/screenlength
-    elif bot[l]
-            nextlayerthick=bots[l]-bots[l+1]
-        else:
-            nextlayerthick=bots[l]-scbot[i]
-        PR[l+1]='''
+# write list of culled targets (within model domain) to outfile for import into excel
+ofp=open(culled_headtargets,'w')
+for lines in ctargets:
+    ofp.write(lines+'\n')
+ofp.close()
