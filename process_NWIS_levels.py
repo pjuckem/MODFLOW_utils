@@ -194,6 +194,49 @@ for well in wells:
     names[well]=name
 discarded.close()
 
+# all names are assigned; build list and check for duplicates
+# if duplicates, use different 10-digit string of site_no
+# continue, changing 10 digit string, until no duplicates
+# reduce digits taken from site number if necessary
+nameslist=[]
+
+dupscount=0
+print "modifying any duplicate names by choosing new 10-digit strings from site numbers..."
+
+for name in names.itervalues():
+    nameslist.append(name)
+num_dups=len(nameslist)-len(np.unique(np.array(nameslist)))
+i=0
+while num_dups>0:
+    dupscount=0
+    i+=1
+    wells2delete=[]
+    for well in names.iterkeys():
+        if len(names[well])==0:
+            wells2delete.append(well)
+            continue
+        count=nameslist.count(names[well])
+        if count>1:
+            dupscount+=1
+            oldname=names[well]
+            if i<=4:
+                names[well]=well[4-i:(-1-i)]+oldname[-5:]
+                print names[well]
+            else:
+                names[well]=well[i:]+oldname[-5:]
+    print "fixed %s duplicate names!" %(dupscount)
+    for well in wells2delete:
+        del names[well]
+    nameslist=[]
+    for name in names.itervalues():
+        nameslist.append(name)    
+    num_dups=len(nameslist)-len(np.unique(np.array(nameslist)))
+    if num_dups>0:
+        print "still duplicates; trying new 10-digit strings from site numbers.."
+    else:
+        break
+print "done fixing duplicates!"
+
 # For wells with multiple measurements, calculate average values for post and pre-1970
 # Plot out measurements and average values for comparison
 # replace multiple levels with new average level
@@ -267,20 +310,27 @@ pdf.close()
 plt.close('all')
 print "Done plotting, see %s for results" %(pdffile)
 
-# Writeout output files
+print "writing testpoint files..."
 
 if mode=='GFLOW':
     for category in ['best','good','fair','poor']:
         # create tp file for each
         fname=category+'_heads.tp'
+        print fname
         ofp=open(fname,'w')
         for well in wells:
             if category in names[well]:
                 ofp.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
         ofp.close()
+    ofp=open('heads_ALL.tp','w')    
+    print 'heads_ALL.tp'    
+    for well in wells:
+        ofp.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
+    ofp.close()
         
 if mode=='MODFLOW':
     ofp=open('NWIS_MFhobs_export.csv','w')
+    print 'NWIS_MFhobs_export.csv'
     ofp.write('Name,POINT_X,POINT_Y,WL,ScreenTop,ScreenBot\n')
     for category in ['best','good','fair','poor']:
         for well in wells:
@@ -289,4 +339,5 @@ if mode=='MODFLOW':
                     continue
                 else:
                     ofp.write('%s,%s,%s,%s,%s,%s\n' %(names[well],coords[well][0],coords[well][1],levels[well],WellDepth_elev[well],WellDepth_elev[well]))
-    ofp.close()    
+    ofp.close()
+print "finished OK"
