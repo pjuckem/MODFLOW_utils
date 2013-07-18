@@ -25,7 +25,7 @@ coordsfile= 'Columbia_NWIS_headsWTM.csv'
 # Outfiles
 pdffile='extended_records.pdf'
 
-mode='MODFLOW' # GFLOW or MODFLOW; writes either a tp file, or .hob file for MF2k observation process
+mode='GFLOW' # GFLOW or MODFLOW; writes either a tp file, or .hob file for MF2k observation process
 
 
 print "getting well info, water levels, and coordinates..."
@@ -60,6 +60,7 @@ WellDepth_elev=defaultdict()
 
 for line in levelsdata:
     wellnum=line['site_no']
+    status=line['lev_status_cd']
     info_ind=np.where(info['site_no']==wellnum)[0][0] 
     elevation=float(info['alt_va'][info_ind].strip())
     try:
@@ -71,7 +72,6 @@ for line in levelsdata:
         level=elevation-float(level)
     except ValueError:
         level=None
-    status=line['lev_status_cd']
     try:
         welldepth_elev=elevation-float(info['well_depth_va'][info_ind].strip())   
     except ValueError:
@@ -99,7 +99,7 @@ wells2plot=[]
 # open file to writeout information on "poor" wells that didn't meet any of the quality criteria
 discarded=open('discarded_wells.txt','w')
 discarded.write('well,num_measurements,reliability_code,alt_accuracy\n')
-
+num_artesian=0
 for well in wells:
     print well
     
@@ -126,9 +126,16 @@ for well in wells:
     # before sorting, identify wells with more than one measurement
     # extract single value from list for wells with one measurement
     # for artesian wells, set GW elevation to wellhead elevation if no value
+    
     if levels[well][0]==None:
-        if 'F' or 'E' in codes[well]:
+        if 'F' in codes[well]:
+            artesian=True
             levels[well]=elevation
+            num_artesian+=1
+        elif 'E' in codes[well]:
+            artesian=True
+            levels[well]=elevation
+            num_artesian+=1        
     elif len(levels[well])>1:
         wells2plot.append(well)
         maxmin=np.max(levels[well])-np.min(levels[well])
@@ -136,9 +143,14 @@ for well in wells:
         try:
             levels[well]=levels[well][0]
         except TypeError: # if no level, value obtained from file might be ''
-            if 'F' or 'E' in codes[well]:
+            if 'F' in codes[well]:
                 artesian=True
-                levels[well]=elevation                     
+                levels[well]=elevation
+                num_artesian+=1
+            elif 'E' in codes[well]:
+                artesian=True
+                levels[well]=elevation
+                num_artesian+=1 
     # sort wells based on QC criteria
     if Drely=='C':
         
@@ -226,6 +238,7 @@ while num_dups>0:
                 names[well]=well[i:]+oldname[-5:]
     print "fixed %s duplicate names!" %(dupscount)
     for well in wells2delete:
+        print 'deleting well: %s\n' %(well)
         del names[well]
     nameslist=[]
     for name in names.itervalues():
@@ -313,21 +326,20 @@ print "Done plotting, see %s for results" %(pdffile)
 print "writing testpoint files..."
 
 if mode=='GFLOW':
+    ofp2=open('heads_ALL.tp','w')
     for category in ['best','good','fair','poor']:
         # create tp file for each
         fname=category+'_heads.tp'
         print fname
         ofp=open(fname,'w')
         for well in wells:
-            if category in names[well]:
+            if category in names[well]: # note: for some reason, there were a handful of well for Columbia that remained unnamed; unclear why. Looking for the category weeds them out, but doesn't explain why they weren't capture by the last "else" statement in the sorting algorithm.
                 ofp.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
+                ofp2.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
         ofp.close()
-    ofp=open('heads_ALL.tp','w')    
+    ofp2.close()    
     print 'heads_ALL.tp'    
-    for well in wells:
-        ofp.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
-    ofp.close()
-        
+
 if mode=='MODFLOW':
     ofp=open('NWIS_MFhobs_export.csv','w')
     print 'NWIS_MFhobs_export.csv'
