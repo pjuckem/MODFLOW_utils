@@ -334,8 +334,8 @@ if mode=='GFLOW':
         ofp=open(fname,'w')
         for well in wells:
             if category in names[well]: # note: for some reason, there were a handful of well for Columbia that remained unnamed; unclear why. Looking for the category weeds them out, but doesn't explain why they weren't capture by the last "else" statement in the sorting algorithm.
-                ofp.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
-                ofp2.write('%s,%s,%s,0,piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
+                ofp.write('%s,%s,%s,0,Piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
+                ofp2.write('%s,%s,%s,0,Piezometer,%s\n' %(coords[well][0],coords[well][1],levels[well],names[well]))
         ofp.close()
     ofp2.close()    
     print 'heads_ALL.tp'    
