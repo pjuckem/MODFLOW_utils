@@ -9,6 +9,10 @@
 # This can be created by exporting csv of stations and WGS84 coordinates into ArcMap
 # A character needs to be added to ends of station numbers (e.g. '434238088592501n') so that Arc treats them as strings
 # Coordinates exported from Arc should have columns site_no2,POINT_X,POINT_Y
+#
+# The sorting algorithm below might be cleaner and more transparent if reformulated in terms of cumulative error
+# e.g. 5 ft. + 3.5 ft. for alt_accuracy of <=5 ft., and std deviation in measurements of 3.5
+# would still have to come up with quantities to represent the lower preceived error for wells with Water Quality measurements, artesian, etc.
 
 import numpy as np
 from collections import defaultdict
@@ -25,8 +29,9 @@ coordsfile= 'Columbia_NWIS_headsWTM.csv'
 # Outfiles
 pdffile='extended_records.pdf'
 
+# Settings
 mode='GFLOW' # GFLOW or MODFLOW; writes either a tp file, or .hob file for MF2k observation process
-
+discard_lev_status_cd=['P','R','S','T','Z'] # list of level_status_cds to discard (e.g. if well was being pumped)
 
 print "getting well info, water levels, and coordinates..."
 
@@ -57,10 +62,25 @@ levels=defaultdict(list)
 dates=defaultdict(list)
 codes=defaultdict(list)
 WellDepth_elev=defaultdict()
+pumping_count=defaultdict(list)
 
+discarded=open('discarded_wells.txt','w')
+# Go through each level in levels file
 for line in levelsdata:
     wellnum=line['site_no']
     status=line['lev_status_cd']
+    
+    # toss out water levels with bad status code (see above)
+    discard=False
+    for code in discard_lev_status_cd:
+        if status==code:
+            discard=True
+            pumping_count[wellnum].append(1) # keep track of number of wells and levels influenced by pumping
+            break
+        
+    if discard:
+        continue # skip level
+        
     info_ind=np.where(info['site_no']==wellnum)[0][0] 
     elevation=float(info['alt_va'][info_ind].strip())
     try:
@@ -81,6 +101,12 @@ for line in levelsdata:
     codes[wellnum].append(status)
     WellDepth_elev[wellnum]=welldepth_elev
 
+pumping_discarded_levels=len([item for sublist in pumping_count.values() for item in sublist])
+print "Discarded %s pumping-influenced levels from %s wells..." %(pumping_discarded_levels,len(pumping_count.keys()))
+discarded.write('well,n_discarded\n')
+for key in pumping_count.iterkeys():
+    discarded.write('%s,%s\n' %(key,len(pumping_count[key])))
+
 # get coordinates from coordsfile
 coordsdata=np.genfromtxt(coordsfile,delimiter=',',names=True,dtype=None)
 coords=defaultdict(list)
@@ -96,11 +122,10 @@ names=defaultdict(list)
 rejects=defaultdict(list)
 wells2plot=[]
 
-# open file to writeout information on "poor" wells that didn't meet any of the quality criteria
-discarded=open('discarded_wells.txt','w')
-discarded.write('well,num_measurements,reliability_code,alt_accuracy\n')
+# writeout information on "poor" wells that didn't meet any of the quality criteria
+discarded.write('\n\nwell,num_measurements,reliability_code,alt_accuracy\n')
 num_artesian=0
-for well in wells:
+for well in wells:    
     print well
     
     # reset variables
@@ -150,55 +175,117 @@ for well in wells:
             elif 'E' in codes[well]:
                 artesian=True
                 levels[well]=elevation
-                num_artesian+=1 
-    # sort wells based on QC criteria
+                num_artesian+=1
+                
+    # keep only wells that have been checked by a reporting agency
     if Drely=='C':
         
+        # get water levels and std
+        WLs=levels[well]
+        try:
+            std=np.std(WLs)
+        except TypeError: # means there is only one measurement
+            std=None
+            
+        # get water levels after 1970
         after1970_inds=list(np.where(np.array(dateslist)>dt.datetime(1970,1,1,0,0))[0])
-        if len(after1970_inds)>2 and alt_acc<=10:
-            n=len(after1970_inds)
-            if alt_acc<=5 and n>2:
-                name=well[5:]+'_best'
-            elif alt_acc<=10 and len(after1970_inds)>30:
-                name=well[5:]+'_best'
-            elif maxmin<20:
-                name=well[5:]+'_good'
-            elif n>10:
-                name=well[5:]+'_good'
-            else:
-                name=well[5:]+'_fair'
-        elif len(after1970_inds)==2 and alt_acc<=5:
-            if maxmin<20:
-                name=well[5:]+'_good'
-            else:
-                name=well[5:]+'_fair'
-        elif len(after1970_inds)==1 and alt_acc<5:
-            name=well[5:]+'_good'
-        elif len(after1970_inds)==1 and numWQ>0 and alt_acc<=5:
-            name=well[5:]+'_good'
-        elif len(after1970_inds)==1 and artesian and alt_acc<=5:
-            name=well[5:]+'_good'
-        elif len(after1970_inds)==1 and alt_acc<=10: 
-            name=well[5:]+'_fair'
-        elif len(after1970_inds)==0:
-            n=len(dateslist)
-            if n>2 and alt_acc<=5:
-                if n>10:
-                    name=well[5:]+'_good'
-                elif n<=10 and maxmin<20:
-                    name=well[5:]+'_good'
+        n=len(after1970_inds)
+        
+        # function to assign weight category based on standard dev
+        def assignby_std(std,name,tier):
+            # tier =1,2 (best,good); sets a ceiling on the highest name to assign
+            if tier==1 and std<=5:
+                name=name+'_best'
+            elif tier>=1 and std<=10:
+                name=name+'_good'
+            else: # std is >10
+                name=name+'_fair'
+            return name
+        
+        # if there are measurements post1970
+        if n>0:
+            
+            # cull levels to post1970 (just for weight category assignment)
+            try:
+                WLs=[i for j, i in enumerate(levels[well]) if j in after1970_inds]
+                std=np.std(WLs)
+            except TypeError: # means there is only one measurement
+                std=None  
+            
+            # more than two measurements after 1970
+            if n>2 and alt_acc<=10:
+                
+                if alt_acc<=5 and n>2:
+                    name=assignby_std(std,well[5:],1)
+                elif alt_acc<=10 and n>30:
+                    name=assignby_std(std,well[5:],1)
+                elif alt_acc<=10 and n>2:
+                    name=assignby_std(std,well[5:],2)
                 else:
-                    name=well[5:]+'_fair'                
-            elif n>0:
+                    name=well[5:]+'_fair'
+            
+            # Just two
+            elif n==2 and alt_acc<=5:
+                name=assignby_std(std,well[5:],2)
+                
+            # Only one measurement post 1970
+            elif n==1 and alt_acc<5:
+                name=well[5:]+'_good'
+            elif n==1 and numWQ>0 and alt_acc<=5:
+                name=well[5:]+'_good'
+            elif n==1 and artesian and alt_acc<=5:
+                name=well[5:]+'_good'
+            elif n==1 and alt_acc<=10: 
                 name=well[5:]+'_fair'
             else:
                 name=well[5:]+'_poor'
                 rejects[well].append([n,Drely,alt_acc,name])
-                discarded.write('%s,%s,%s,%s,%s\n' %(well,n,Drely,alt_acc,name))                
+                discarded.write('%s,%s,%s,%s,%s\n' %(well,n,Drely,alt_acc,name))            
+        
+        # No measurements after 1970
+        else:
+            n=len(dateslist)
+            
+            # if >2 measurements and good alt accuracy
+            if n>2 and alt_acc<=5:
+                name=assignby_std(std,well[5:],2)
+            elif alt_acc<=10:
+                name=well[5:]+'_fair'
+                
+            # only one pre1970 measurement or poor alt accuracy
+            else:
+                name=well[5:]+'_poor'
+                rejects[well].append([n,Drely,alt_acc,name])
+                discarded.write('%s,%s,%s,%s,%s\n' %(well,n,Drely,alt_acc,name))
+                
+    # measurement has not been checked by reporting agency
+    # keep only post 1970, and then only wells with 2+ measurements, std<=10, and alt accuracy <=10
+    
+    elif Drely=='U':
+        
+        after1970_inds=list(np.where(np.array(dateslist)>dt.datetime(1970,1,1,0,0))[0])
+        n=len(after1970_inds)        
+        try:
+            WLs=[i for j, i in enumerate(levels[well]) if j in after1970_inds]
+            std=np.std(WLs)
+        except TypeError: # means there is only one measurement
+            std=None
+            
+        if n>2 and alt_acc<=5:
+            if std<=5:
+                name=well[5:]+'_good'
+        elif n>30 and alt_acc<=10:
+            if std<=5:
+                name=well[5:]+'_good'
+        elif n>2 and alt_acc<=10:
+            if std<=10:
+                name=well[5:]+'_fair'
         else:
             name=well[5:]+'_poor'
             rejects[well].append([n,Drely,alt_acc,name])
-            discarded.write('%s,%s,%s,%s,%s\n' %(well,n,Drely,alt_acc,name))
+            discarded.write('%s,%s,%s,%s,%s\n' %(well,n,Drely,alt_acc,name))            
+            
+    # discarded because not reliable
     else:
         name=well[5:]+'_poor'
         rejects[well].append([n,Drely,alt_acc,name])
@@ -214,6 +301,7 @@ nameslist=[]
 
 dupscount=0
 print "modifying any duplicate names by choosing new 10-digit strings from site numbers..."
+print "(duplicate names occur because only a 10-digit subset of the 15-digit ID is used for names;\nsome programs like GFLOW or PEST have observation name length limits)"
 
 for name in names.itervalues():
     nameslist.append(name)
@@ -259,7 +347,10 @@ print 'calculating average values; plotting levels for wells with multiple level
 for well in wells2plot:
     
     print well
-    #info_ind=np.where(info['site_no']==well)[0][0]
+    info_ind=np.where(info['site_no']==well)[0][0]
+    alt_acc=float(info['alt_acy_va'][info_ind].strip())
+    numWQ=float(info['qw_count_nu'][info_ind].strip())
+    codez=[c for c in codes[well] if c<>'']
     dates2plot=list(mdates.date2num(dates[well]))
     WLs=levels[well]
     use_post1970=True
@@ -274,11 +365,13 @@ for well in wells2plot:
     num2skip=len(WLs)-len(post1970)
     post1970WLs=WLs[num2skip:]
     avg_post1970=[np.mean(post1970WLs)]*len(post1970)    
-
+    std_post1970=np.std(post1970WLs)
+    
     # pre 1970 average
     pre1970=[d for d in dates2plot if d<cutoff]
     pre1970WLs=WLs[:len(pre1970)]
     avg_pre1970=[np.mean(pre1970WLs)]*len(pre1970)
+    std_pre1970=np.std(pre1970WLs)
     
     # decide which set of water levels to use
     # replace multiple values in levels file with average
@@ -311,10 +404,11 @@ for well in wells2plot:
     if len(post1970)>0:
         #ax1.axhline(y=avg_post1970, xmin=start, color='r',label='post-1970 avg')
         p2=ax1.plot_date(post1970,avg_post1970,'r',label='post-1970 avg')
-            
+        ax1.text(0.95,0.05,'stdev: %s\nalt accuracy: %s\nnum WQ: %s\nWell codes: %s' %(round(std_post1970,2),alt_acc,numWQ,codez),verticalalignment='bottom',horizontalalignment='right',transform=ax1.transAxes)    
     if len(pre1970)>0:
         #ax1.axhline(y=avg_pre1970, xmax=end, color='g',label='pre-1970 avg')
         p3=ax1.plot_date(pre1970,avg_pre1970,'g',label='pre-1970 avg')
+        ax1.text(0.05,0.05,'stdev: %s\nalt accuracy: %s\nnum WQ: %s\nWell codes: %s' %(round(std_pre1970,2),alt_acc,numWQ,codez),verticalalignment='bottom',horizontalalignment='left',transform=ax1.transAxes)
     handles, labels = ax1.get_legend_handles_labels()
     ax1.legend(handles,labels)
     ax1.set_title(plot_title)
