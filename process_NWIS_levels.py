@@ -12,7 +12,7 @@
 #
 # The sorting algorithm below might be cleaner and more transparent if reformulated in terms of cumulative error
 # e.g. 5 ft. + 3.5 ft. for alt_accuracy of <=5 ft., and std deviation in measurements of 3.5
-# would still have to come up with quantities to represent the lower preceived error for wells with Water Quality measurements, artesian, etc.
+# would still have to come up with quantities to represent the lower perceived error for wells with Water Quality measurements, artesian, etc.
 
 import numpy as np
 from collections import defaultdict
@@ -32,6 +32,8 @@ pdffile='extended_records.pdf'
 # Settings
 mode='GFLOW' # GFLOW or MODFLOW; writes either a tp file, or .hob file for MF2k observation process
 discard_lev_status_cd=['P','R','S','T','Z'] # list of level_status_cds to discard (e.g. if well was being pumped)
+screen_length=50 # assumed open interval length- NWIS only has well bottoms, so this will be added to bottom to get an open interval for the target. This is also important for avoiding wells being placed in thin (e.g. 1 ft.) "dummy" layers.
+
 
 print "getting well info, water levels, and coordinates..."
 
@@ -444,6 +446,6 @@ if mode=='MODFLOW':
                 if WellDepth_elev[well]==None:
                     continue
                 else:
-                    ofp.write('%s,%s,%s,%s,%s,%s\n' %(names[well],coords[well][0],coords[well][1],levels[well],WellDepth_elev[well],WellDepth_elev[well]))
+                    ofp.write('%s,%s,%s,%s,%s,%s\n' %(names[well],coords[well][0],coords[well][1],levels[well],WellDepth_elev[well]+screen_length,WellDepth_elev[well]))
     ofp.close()
 print "finished OK"
