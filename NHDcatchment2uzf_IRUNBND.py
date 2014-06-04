@@ -39,7 +39,7 @@ arcpy.env.workspace = os.getcwd()
 arcpy.env.overwriteOutput = True
 arcpy.env.qualifiedFieldNames = False
 arcpy.CheckOutExtension("spatial") # Check spatial analyst license
-'''
+
 # preprocessing
 
 print 'merging NHDPlus catchemnt files:'
@@ -65,7 +65,7 @@ print 'and to model grid (this may take awhile)...'
 arcpy.SpatialJoin_analysis(MFgrid,
                            os.path.join(os.getcwd(), 'catchments.shp'),
                            os.path.join(os.getcwd(), 'MFgrid_catchments.shp'))
-'''
+
 # now figure out which SFR segment each catchment should drain to
 print 'reading {} into pandas dataframe...'.format(os.path.join(os.getcwd(), 'catchments_joined.shp'))
 SFRcatchments = GISio.shp2df(os.path.join(os.getcwd(), 'catchments_joined.shp'))
