@@ -58,6 +58,7 @@ print 'clipping to {}'.format(MFdomain)
 arcpy.Clip_analysis(os.path.join(os.getcwd(), 'temp2.shp'), MFdomain, os.path.join(os.getcwd(), 'catchments.shp'))
 
 print 'performing spatial join of catchments to SFR cells...'
+# intersect is way faster than spatial join
 arcpy.SpatialJoin_analysis(SFR_shapefile,
                            os.path.join(os.getcwd(), 'catchments.shp'),
                            os.path.join(os.getcwd(), 'catchments_joined.shp'))
@@ -90,6 +91,8 @@ nrows, ncols = np.max(MFgrid_joined.row), np.max(MFgrid_joined.column)
 MFgrid_joined['segment'] = MFgrid_joined.FEATUREID.apply(segments_dict.get).fillna(0)
 
 print 'writing {}'.format(out_IRUNBND)
+# should add code to allow for a dataframe that only includes a subset of model cells
+# (could build a DF of zeros for each cellnum, and then merge with DF containing UZF cells, replacing the zeros for those cells
 IRUNBND = np.reshape(MFgrid_joined['segment'].sort_index().values, (nrows, ncols))
 np.savetxt(out_IRUNBND, IRUNBND, fmt='%i', delimiter=' ')
 
