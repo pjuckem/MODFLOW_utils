@@ -14,7 +14,7 @@ import numpy as np
 import arcpy
 import os
 import sys
-GIS_utils_path = 'D:/ATLData/Documents/GitHub/GIS_utils'
+GIS_utils_path = 'D:/PFJData2/Programs/GIS_utils'
 if GIS_utils_path not in sys.path:
     sys.path.append(GIS_utils_path)
 import GISio
